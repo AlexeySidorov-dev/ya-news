@@ -48,7 +48,7 @@ class TestHomePage(TestCase):
         self.assertEqual(news_count, settings.NEWS_COUNT_ON_HOME_PAGE)
 
     def test_news_order(self):
-        """Проверка сотировки."""
+        """Проверка сотировки на главной странице."""
         response = self.client.get(self.HOME_URL)
         object_list = response.context['object_list']
         # Получаем даты новостей в том порядке, как они выведены на странице.
@@ -69,7 +69,7 @@ class TestDetailPage(TestCase):
             title='Тестовая новость', text='Просто текст.'
         )
         # Сохраняем в переменную адрес страницы с новостью:
-        cls.detail_url = reverse('news:detail', args=(cls.news.id,))
+        cls.detail_url = reverse('news:detail', args=(cls.news.pk,))
         cls.author = User.objects.create(username='Комментатор')
         # Запоминаем текущее время:
         now = timezone.now()

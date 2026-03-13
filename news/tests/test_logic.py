@@ -1,5 +1,6 @@
-from http import HTTPStatus
+"""Тестирование (unittest) логики проекта yanews."""
 
+from http import HTTPStatus
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -23,7 +24,7 @@ class TestCommentCreation(TestCase):
         """Создание фикстур."""
         cls.news = News.objects.create(title='Заголовок', text='Текст')
         # Адрес страницы с новостью.
-        cls.url = reverse('news:detail', args=(cls.news.id,))
+        cls.url = reverse('news:detail', args=(cls.news.pk,))
         # Создаём пользователя и клиент, логинимся в клиенте.
         cls.user = User.objects.create(username='Мимо Крокодил')
         cls.auth_client = Client()
@@ -90,9 +91,12 @@ class TestCommentEditDelete(TestCase):
         """Создание фикстур."""
         # Создаём новость в БД.
         cls.news = News.objects.create(title='Заголовок', text='Текст')
-        # Формируем адрес блока с комментариями, который понадобится для тестов.
-        news_url = reverse('news:detail', args=(cls.news.id,))  # Адрес новости.
-        cls.url_to_comments = news_url + '#comments'  # Адрес блока с комментариями.
+        # Формируем адрес блока с комментариями, который понадобится для
+        # тестов.
+        # Адрес новости.
+        news_url = reverse('news:detail', args=(cls.news.id,))
+        # Адрес блока с комментариями.
+        cls.url_to_comments = news_url + '#comments'
         # Создаём пользователя - автора комментария.
         cls.author = User.objects.create(username='Автор комментария')
         # Создаём клиент для пользователя-автора.
@@ -110,9 +114,9 @@ class TestCommentEditDelete(TestCase):
             text=cls.COMMENT_TEXT
         )
         # URL для редактирования комментария.
-        cls.edit_url = reverse('news:edit', args=(cls.comment.id,))
+        cls.edit_url = reverse('news:edit', args=(cls.comment.pk,))
         # URL для удаления комментария.
-        cls.delete_url = reverse('news:delete', args=(cls.comment.id,))
+        cls.delete_url = reverse('news:delete', args=(cls.comment.pk,))
         # Формируем данные для POST-запроса по обновлению комментария.
         cls.form_data = {'text': cls.NEW_COMMENT_TEXT}
 
