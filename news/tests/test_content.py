@@ -46,7 +46,7 @@ class TestHomePage(TestCase):
         """Количество новостей на главной странице."""
         # Определяем количество новостей в списке:
         news_count = self.object_list.count()
-        # Проверяем, что на странице именно 10 новостей:
+        # Проверяем, что на странице необходимое количество новостей:
         self.assertEqual(news_count, settings.NEWS_COUNT_ON_HOME_PAGE)
 
     def test_news_order(self):

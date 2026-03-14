@@ -4,14 +4,13 @@ from http import HTTPStatus
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
-from pytest_django.asserts import assertRedirects
 
 from news.forms import BAD_WORDS, WARNING
 from news.models import Comment, News
 
 User = get_user_model()
 
-COMMENT_TEXT = 'Текст комментария'
+COMMENT_TEXT: str = 'Текст комментария'
 
 
 class TestCommentCreation(TestCase):
@@ -33,33 +32,33 @@ class TestCommentCreation(TestCase):
 
     def test_anonymous_user_cant_create_comment(self):
         """Анонимный пользователь не может отправлять комментарии."""
+        # Фиксируем в переменной, количество комментариев до запроса:
+        count_comment_before = Comment.objects.count()
         # POST запрос от анонимного клиента на добавление комментария:
         response = self.client.post(self.url, data=self.form_data)
         login_url = reverse('users:login')
         expected_url = f'{login_url}?next={self.url}'
         # Проверяем, что редирект привёл к странице логина:
         self.assertRedirects(response, expected_url)
-        # Фиксируем в переменной, что комментарий не добавлен:
-        count_comment = 0
-        # Получаем количество комментариев из БД:
-        count_comment_from_db = Comment.objects.count()
+        # Получаем количество комментариев из БД после запроса:
+        count_comment_after = Comment.objects.count()
         # Убеждаемся, что заметка не создана:
-        self.assertEqual(count_comment_from_db, count_comment)
+        self.assertEqual(count_comment_before, count_comment_after)
 
     def test_user_can_create_comment(self):
         """Авторизованный пользователь может отправлять комментарии."""
+        # Фиксируем в переменной, количество комментариев до запроса:
+        count_comment_before = Comment.objects.count()
         # POST запрос от авторизованного клиента на добавление комментария:
         response = self.user_client.post(self.url, data=self.form_data)
         # Адрес раздела с комментариями:
         url_to_comments = f'{self.url}#comments'
         # Проверяем, что редирект привёл к разделу с комментариями:
         self.assertRedirects(response, url_to_comments)
-        # Фиксируем в переменной, что комментарий добавлен:
-        count_comment = 1
-        # Получаем количество комментариев из БД:
-        count_comment_from_db = Comment.objects.count()
+        # Получаем количество комментариев из БД после запроса:
+        count_comment_after = Comment.objects.count()
         # Убеждаемся, что комментарий добавлен:
-        self.assertEqual(count_comment_from_db, count_comment)
+        self.assertNotEqual(count_comment_before, count_comment_after)
         # Получаем объект комментария из БД:
         comment = Comment.objects.get()
         # Проверяем, что все атрибуты комментария совпадают с ожидаемыми.
@@ -69,6 +68,8 @@ class TestCommentCreation(TestCase):
 
     def test_user_cant_use_bad_words(self):
         """Проверка запрещенных слов в комментарии."""
+        # Фиксируем в переменной, количество комментариев до запроса:
+        count_comment_before = Comment.objects.count()
         # Подготавливаем форму для добавления комментария с запрещенным словом:
         bad_words_data = {'text': f'Какой-то текст, {BAD_WORDS[0]}, еще текст'}
         # POST запрос от авторизованного клиента на добавление комментария,
@@ -78,12 +79,10 @@ class TestCommentCreation(TestCase):
         form = response.context['form']
         # Проверяем, есть ли в ответе ошибка формы:
         self.assertFormError(form=form, field='text', errors=WARNING)
-        # Фиксируем в переменной, что комментарий не добавлен:
-        count_comment = 0
-        # Получаем количество комментариев из БД:
-        count_comment_from_db = Comment.objects.count()
+        # Получаем количество комментариев из БД после запоса:
+        count_comment_after = Comment.objects.count()
         # Убеждаемся, что комментарий не добавлен:
-        self.assertEqual(count_comment_from_db, count_comment)
+        self.assertEqual(count_comment_before, count_comment_after)
 
 
 class TestCommentEditDelete(TestCase):
@@ -123,18 +122,31 @@ class TestCommentEditDelete(TestCase):
 
     def test_author_can_delete_comment(self):
         """Автор может удалить свой комментарий."""
+        # Фиксируем в переменной, количество комментариев до запроса:
+        count_comment_before = Comment.objects.count()
         # От имени автора комментария отправляем DELETE-запрос на удаление:
         response = self.author_client.delete(self.delete_url)
         # Проверяем, что редирект привёл к разделу с комментариями:
         self.assertRedirects(response, self.url_to_comments)
         # Проверяем статус-код:
         self.assertEqual(response.status_code, HTTPStatus.FOUND)
-        # Фиксируем в переменной, что комментарий удален:
-        count_comment = 0
-        # Получаем количество комментариев из БД:
-        count_comment_from_db = Comment.objects.count()
+        # Получаем количество комментариев из БД после запроса:
+        count_comment_after = Comment.objects.count()
         # Убеждаемся, что комментарий удален:
-        self.assertEqual(count_comment_from_db, count_comment)
+        self.assertNotEqual(count_comment_before, count_comment_after)
+
+    def test_user_cant_delete_comment_of_another_user(self):
+        """Пользователь не может удалить комментарий другого автора."""
+        # Фиксируем в переменной, количество комментариев до запроса:
+        count_comment_before = Comment.objects.count()
+        # DELETE запрос на удаление от пользователя-читателя:
+        response = self.reader_client.delete(self.delete_url)
+        # Проверяем, что вернулась 404 ошибка:
+        self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
+        # Получаем количество комментариев из БД:
+        count_comment_after = Comment.objects.count()
+        # Убеждаемся, что комментарий не удален:
+        self.assertEqual(count_comment_before, count_comment_after)
 
     def test_author_can_edit_comment(self):
         """Автор может редактировать свой комментарий."""
@@ -147,19 +159,6 @@ class TestCommentEditDelete(TestCase):
         self.comment.refresh_from_db()
         # Проверяем, что текст комментария соответствует обновленному.
         self.assertEqual(self.comment.text, self.form_data_edit['text'])
-
-    def test_user_cant_delete_comment_of_another_user(self):
-        """Пользователь не может удалить комментарий другого автора."""
-        # DELETE запрос на удаление от пользователя-читателя:
-        response = self.reader_client.delete(self.delete_url)
-        # Проверяем, что вернулась 404 ошибка:
-        self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
-        # Фиксируем в переменной, что комментарий не удален:
-        count_comment = 1
-        # Получаем количество комментариев из БД:
-        count_comment_from_db = Comment.objects.count()
-        # Убеждаемся, что комментарий не удален:
-        self.assertEqual(count_comment_from_db, count_comment)
 
     def test_user_cant_edit_comment_of_another_user(self):
         """Пользователь не может редактировать комментарий другого автора."""

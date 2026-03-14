@@ -1,8 +1,8 @@
 """Тестирование (pytest) контента проекта yanews."""
 
 import pytest
-from pytest_lazyfixture import lazy_fixture as lf
 from django.urls import reverse
+from django.conf import settings
 
 from news.forms import CommentForm
 
@@ -18,8 +18,8 @@ def test_news_count_and_order(client, all_news):
 
     # Определяем количество новостей в списке:
     news_count = object_list.count()
-    # Проверяем, что на странице именно 10 новостей:
-    assert news_count == (len(all_news) - 1)
+    # Проверяем, что на странице нужное количество новостей:
+    assert news_count == settings.NEWS_COUNT_ON_HOME_PAGE
 
     # Получаем даты новостей в том порядке, как они выведены на странице:
     all_dates = [news.date for news in object_list]
