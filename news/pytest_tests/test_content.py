@@ -40,9 +40,9 @@ def test_comments_order(client, pk_new_for_args):
     # под ожидаемым именем - названием модели.
     assert 'news' in response.context
     # Получаем объект новости.
-    news = response.context['news']
-    # Получаем все комментарии к новости.
-    all_comments = news.comment_set.all()
+    new = response.context['news']
+    # Получаем все комментарии к новости из БД:
+    all_comments = new.comment_set.all()
     # Собираем временные метки всех комментариев.
     all_timestamps = [comment.created for comment in all_comments]
     # Сортируем временные метки, менять порядок сортировки не надо.

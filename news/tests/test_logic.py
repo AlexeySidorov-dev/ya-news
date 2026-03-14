@@ -4,163 +4,171 @@ from http import HTTPStatus
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+from pytest_django.asserts import assertRedirects
 
-# Импортируем из файла с формами список стоп-слов и предупреждение формы.
-# Загляните в news/forms.py, разберитесь с их назначением.
 from news.forms import BAD_WORDS, WARNING
 from news.models import Comment, News
 
 User = get_user_model()
 
+COMMENT_TEXT = 'Текст комментария'
+
 
 class TestCommentCreation(TestCase):
     """Тестирование комментариев."""
-    # Текст комментария понадобится в нескольких местах кода,
-    # поэтому запишем его в атрибуты класса.
-    COMMENT_TEXT = 'Текст комментария'
 
     @classmethod
     def setUpTestData(cls):
         """Создание фикстур."""
-        cls.news = News.objects.create(title='Заголовок', text='Текст')
-        # Адрес страницы с новостью.
-        cls.url = reverse('news:detail', args=(cls.news.pk,))
-        # Создаём пользователя и клиент, логинимся в клиенте.
-        cls.user = User.objects.create(username='Мимо Крокодил')
-        cls.auth_client = Client()
-        cls.auth_client.force_login(cls.user)
-        # Данные для POST-запроса при создании комментария.
-        cls.form_data = {'text': cls.COMMENT_TEXT}
+        # Создаем новость:
+        cls.new = News.objects.create(title='Заголовок', text='Текст')
+        # Адрес страницы с новостью:
+        cls.url = reverse('news:detail', args=(cls.new.pk,))
+        # Создаём пользователя и клиента, логинимся в клиенте:
+        cls.user = User.objects.create(username='Пользователь')
+        cls.user_client = Client()
+        cls.user_client.force_login(cls.user)
+        # Данные для POST-запроса при создании комментария:
+        cls.form_data = {'text': COMMENT_TEXT}
 
     def test_anonymous_user_cant_create_comment(self):
-        """Анонимный пользователь не может оставлять комментарии."""
-        # Совершаем запрос от анонимного клиента, в POST-запросе отправляем
-        # предварительно подготовленные данные формы с текстом комментария.
-        self.client.post(self.url, data=self.form_data)
-        # Считаем количество комментариев.
-        comments_count = Comment.objects.count()
-        # Ожидаем, что комментариев в базе нет - сравниваем с нулём.
-        self.assertEqual(comments_count, 0)
+        """Анонимный пользователь не может отправлять комментарии."""
+        # POST запрос от анонимного клиента на добавление комментария:
+        response = self.client.post(self.url, data=self.form_data)
+        login_url = reverse('users:login')
+        expected_url = f'{login_url}?next={self.url}'
+        # Проверяем, что редирект привёл к странице логина:
+        self.assertRedirects(response, expected_url)
+        # Фиксируем в переменной, что комментарий не добавлен:
+        count_comment = 0
+        # Получаем количество комментариев из БД:
+        count_comment_from_db = Comment.objects.count()
+        # Убеждаемся, что заметка не создана:
+        self.assertEqual(count_comment_from_db, count_comment)
 
     def test_user_can_create_comment(self):
-        """Авторизованный пользователь может оставлять комментарии."""
-        # Совершаем запрос через авторизованный клиент.
-        response = self.auth_client.post(self.url, data=self.form_data)
-        # Проверяем, что редирект привёл к разделу с комментами.
-        self.assertRedirects(response, f'{self.url}#comments')
-        # Считаем количество комментариев.
-        comments_count = Comment.objects.count()
-        # Убеждаемся, что есть один комментарий.
-        self.assertEqual(comments_count, 1)
-        # Получаем объект комментария из базы.
+        """Авторизованный пользователь может отправлять комментарии."""
+        # POST запрос от авторизованного клиента на добавление комментария:
+        response = self.user_client.post(self.url, data=self.form_data)
+        # Адрес раздела с комментариями:
+        url_to_comments = f'{self.url}#comments'
+        # Проверяем, что редирект привёл к разделу с комментариями:
+        self.assertRedirects(response, url_to_comments)
+        # Фиксируем в переменной, что комментарий добавлен:
+        count_comment = 1
+        # Получаем количество комментариев из БД:
+        count_comment_from_db = Comment.objects.count()
+        # Убеждаемся, что комментарий добавлен:
+        self.assertEqual(count_comment_from_db, count_comment)
+        # Получаем объект комментария из БД:
         comment = Comment.objects.get()
         # Проверяем, что все атрибуты комментария совпадают с ожидаемыми.
-        self.assertEqual(comment.text, self.COMMENT_TEXT)
-        self.assertEqual(comment.news, self.news)
+        self.assertEqual(comment.text, self.form_data['text'])
+        self.assertEqual(comment.news, self.new)
         self.assertEqual(comment.author, self.user)
 
     def test_user_cant_use_bad_words(self):
-        """Проверка плохих слов в комментарии."""
-        # Формируем данные для отправки формы; текст включает
-        # первое слово из списка стоп-слов.
+        """Проверка запрещенных слов в комментарии."""
+        # Подготавливаем форму для добавления комментария с запрещенным словом:
         bad_words_data = {'text': f'Какой-то текст, {BAD_WORDS[0]}, еще текст'}
-        # Отправляем запрос через авторизованный клиент.
-        response = self.auth_client.post(self.url, data=bad_words_data)
+        # POST запрос от авторизованного клиента на добавление комментария,
+        # в форме добавлено слово исключение:
+        response = self.user_client.post(self.url, data=bad_words_data)
+        # Получаем форму из контекста:
         form = response.context['form']
-        # Проверяем, есть ли в ответе ошибка формы.
-        self.assertFormError(
-            form=form,
-            field='text',
-            errors=WARNING
-        )
-        # Дополнительно убедимся, что комментарий не был создан.
-        comments_count = Comment.objects.count()
-        self.assertEqual(comments_count, 0)
+        # Проверяем, есть ли в ответе ошибка формы:
+        self.assertFormError(form=form, field='text', errors=WARNING)
+        # Фиксируем в переменной, что комментарий не добавлен:
+        count_comment = 0
+        # Получаем количество комментариев из БД:
+        count_comment_from_db = Comment.objects.count()
+        # Убеждаемся, что комментарий не добавлен:
+        self.assertEqual(count_comment_from_db, count_comment)
 
 
 class TestCommentEditDelete(TestCase):
     """Тестирование редактирования и удаления комментариев."""
-    # Тексты для комментариев не нужно дополнительно создавать 
-    # (в отличие от объектов в БД), им не нужны ссылки на self или cls, 
-    # поэтому их можно перечислить просто в атрибутах класса.
-    COMMENT_TEXT = 'Текст комментария'
-    NEW_COMMENT_TEXT = 'Обновлённый комментарий'
 
     @classmethod
     def setUpTestData(cls):
         """Создание фикстур."""
-        # Создаём новость в БД.
+        # Создаём новость в БД:
         cls.news = News.objects.create(title='Заголовок', text='Текст')
-        # Формируем адрес блока с комментариями, который понадобится для
-        # тестов.
-        # Адрес новости.
+        # Адрес новости:
         news_url = reverse('news:detail', args=(cls.news.id,))
-        # Адрес блока с комментариями.
-        cls.url_to_comments = news_url + '#comments'
-        # Создаём пользователя - автора комментария.
+        # Адрес раздела с комментариями:
+        cls.url_to_comments = f'{news_url}#comments'
+        # Создаём пользователя - автора комментария:
         cls.author = User.objects.create(username='Автор комментария')
-        # Создаём клиент для пользователя-автора.
+        # Создаём клиент для пользователя-автора:
         cls.author_client = Client()
-        # "Логиним" пользователя в клиенте.
+        # "Логиним" пользователя-автора в клиенте:
         cls.author_client.force_login(cls.author)
-        # Делаем всё то же самое для пользователя-читателя.
+        # Делаем всё то же самое для пользователя-читателя:
         cls.reader = User.objects.create(username='Читатель')
         cls.reader_client = Client()
         cls.reader_client.force_login(cls.reader)
-        # Создаём объект комментария.
+        # Создаём объект комментария:
         cls.comment = Comment.objects.create(
             news=cls.news,
             author=cls.author,
-            text=cls.COMMENT_TEXT
+            text=COMMENT_TEXT
         )
-        # URL для редактирования комментария.
+        # URL для редактирования комментария:
         cls.edit_url = reverse('news:edit', args=(cls.comment.pk,))
-        # URL для удаления комментария.
+        # URL для удаления комментария:
         cls.delete_url = reverse('news:delete', args=(cls.comment.pk,))
-        # Формируем данные для POST-запроса по обновлению комментария.
-        cls.form_data = {'text': cls.NEW_COMMENT_TEXT}
+        # Формируем данные для POST-запроса для редактирования комментария:
+        cls.form_data_edit = {'text': 'Обновлённый комментарий'}
 
     def test_author_can_delete_comment(self):
         """Автор может удалить свой комментарий."""
-        # От имени автора комментария отправляем DELETE-запрос на удаление.
+        # От имени автора комментария отправляем DELETE-запрос на удаление:
         response = self.author_client.delete(self.delete_url)
-        # Проверяем, что редирект привёл к разделу с комментариями.
+        # Проверяем, что редирект привёл к разделу с комментариями:
         self.assertRedirects(response, self.url_to_comments)
-        # Заодно проверим статус-коды ответов.
+        # Проверяем статус-код:
         self.assertEqual(response.status_code, HTTPStatus.FOUND)
-        # Считаем количество комментариев в системе.
-        comments_count = Comment.objects.count()
-        # Ожидаем ноль комментариев в системе.
-        self.assertEqual(comments_count, 0)
-
-    def test_user_cant_delete_comment_of_another_user(self):
-        """Пользователь не может удалить комментарий другого автора."""
-        # Выполняем запрос на удаление от пользователя-читателя.
-        response = self.reader_client.delete(self.delete_url)
-        # Проверяем, что вернулась 404 ошибка.
-        self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
-        # Убедимся, что комментарий по-прежнему на месте.
-        comments_count = Comment.objects.count()
-        self.assertEqual(comments_count, 1)
+        # Фиксируем в переменной, что комментарий удален:
+        count_comment = 0
+        # Получаем количество комментариев из БД:
+        count_comment_from_db = Comment.objects.count()
+        # Убеждаемся, что комментарий удален:
+        self.assertEqual(count_comment_from_db, count_comment)
 
     def test_author_can_edit_comment(self):
         """Автор может редактировать свой комментарий."""
-        # Выполняем запрос на редактирование от имени автора комментария.
-        response = self.author_client.post(self.edit_url, data=self.form_data)
-        # Проверяем, что сработал редирект.
+        # POST запрос на редактирование от имени автора комментария:
+        response = self.author_client.post(self.edit_url,
+                                           data=self.form_data_edit)
+        # Проверяем, что редирект привёл к разделу с комментариями:
         self.assertRedirects(response, self.url_to_comments)
-        # Обновляем объект комментария.
+        # Обновляем объект комментария:
         self.comment.refresh_from_db()
         # Проверяем, что текст комментария соответствует обновленному.
-        self.assertEqual(self.comment.text, self.NEW_COMMENT_TEXT)
+        self.assertEqual(self.comment.text, self.form_data_edit['text'])
+
+    def test_user_cant_delete_comment_of_another_user(self):
+        """Пользователь не может удалить комментарий другого автора."""
+        # DELETE запрос на удаление от пользователя-читателя:
+        response = self.reader_client.delete(self.delete_url)
+        # Проверяем, что вернулась 404 ошибка:
+        self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
+        # Фиксируем в переменной, что комментарий не удален:
+        count_comment = 1
+        # Получаем количество комментариев из БД:
+        count_comment_from_db = Comment.objects.count()
+        # Убеждаемся, что комментарий не удален:
+        self.assertEqual(count_comment_from_db, count_comment)
 
     def test_user_cant_edit_comment_of_another_user(self):
         """Пользователь не может редактировать комментарий другого автора."""
-        # Выполняем запрос на редактирование от имени другого пользователя.
-        response = self.reader_client.post(self.edit_url, data=self.form_data)
-        # Проверяем, что вернулась 404 ошибка.
+        # POST запрос на редактирование от имени другого пользователя:
+        response = self.reader_client.post(self.edit_url,
+                                           data=self.form_data_edit)
+        # Проверяем, что вернулась 404 ошибка:
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
-        # Обновляем объект комментария.
+        # Обновляем объект комментария:
         self.comment.refresh_from_db()
-        # Проверяем, что текст остался тем же, что и был.
-        self.assertEqual(self.comment.text, self.COMMENT_TEXT)
+        # Проверяем, что текст комментария не изменился:
+        self.assertNotEqual(self.comment.text, self.form_data_edit['text'])

@@ -40,6 +40,13 @@ def reader_client(reader):
 
 
 @pytest.fixture
+def new():
+    """Создаем одну новость."""
+    new = News.objects.create(title='Новость', text='Просто текст.')
+    return new
+
+
+@pytest.fixture
 def all_news():
     """Создаем список новостей (11 штук)."""
     today = datetime.today()
@@ -57,35 +64,41 @@ def all_news():
 
 
 @pytest.fixture
-def all_comments(author, all_news):
-    """Создаем 10 комментариев к первой новости от пользователя автора."""
-    new = all_news[0]  # Первая новость из списка новостей.
-    # Запоминаем текущее время:
-    now = timezone.now()
-    # Создаём комментарии в цикле.
-    for index in range(10):
-        # Создаём объект и записываем его в переменную.
-        comment = Comment.objects.create(
-            news=new, author=author, text=f'Tекст {index}',
-        )
-        # Сразу после создания меняем время создания комментария.
-        comment.created = now + timedelta(days=index)
-        # И сохраняем эти изменения.
-        comment.save()
-    return comment  # Возвращаем последний комментарий для тестов.
+def comment(author, new):
+    """Создаем один комментарий."""
+    comment = (Comment.objects.create(news=new,
+                                      author=author,
+                                      text='Просто текст.'))
+    return comment
 
 
 @pytest.fixture
-def pk_new_for_args(all_news):
-    """Получаем из первой новости кортеж с ее pk."""
-    new = all_news[0]  # Первая новость из списка новостей.
+def all_comments(author, new):
+    """Создаем 10 комментариев к новости от пользователя автора."""
+    # Запоминаем текущее время и при создании меняем время создания
+    # комментария через timedelta:
+    now = timezone.now()
+    all_comments = [
+        Comment.objects.create(
+            news=new,
+            author=author,
+            text=f'Текст {index}',
+            created=now - timedelta(days=index))
+        for index in range(10)
+    ]
+    return all_comments
+
+
+@pytest.fixture
+def pk_new_for_args(new):
+    """Получаем из новости кортеж с ее pk."""
     return (new.pk,)
 
 
 @pytest.fixture
-def pk_comment_for_args(all_comments):
-    """Получаем из первого комментария кортеж с его pk."""
-    return (all_comments.pk,)
+def pk_comment_for_args(comment):
+    """Получаем из комментария кортеж с его pk."""
+    return (comment.pk,)
 
 
 @pytest.fixture
